@@ -78,6 +78,21 @@ class _DownloaderScreenState extends State<DownloaderScreen> {
     super.dispose();
   }
 
+  String? _saveDirectory;
+
+  Future<void> _pickDirectory() async {
+    if (Platform.isAndroid) {
+      await Permission.storage.request();
+      await Permission.manageExternalStorage.request();
+    }
+    String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
+    if (selectedDirectory != null) {
+      setState(() {
+        _saveDirectory = selectedDirectory;
+      });
+    }
+  }
+
   Future<void> _pickAndParseCSV() async {
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
@@ -177,14 +192,20 @@ class _DownloaderScreenState extends State<DownloaderScreen> {
 
     final dio = Dio();
     
-    Directory? downloadsDir;
-    if (Platform.isAndroid) {
-      downloadsDir = Directory('/storage/emulated/0/Download');
-    } else {
-      downloadsDir = await getApplicationDocumentsDirectory();
+    String basePath = _saveDirectory ?? "";
+    if (basePath.isEmpty) {
+      Directory? downloadsDir;
+      if (Platform.isAndroid) {
+        downloadsDir = Directory('/storage/emulated/0/Download');
+      } else {
+        downloadsDir = await getApplicationDocumentsDirectory();
+      }
+      basePath = "${downloadsDir?.path ?? ''}/Masstamilan";
     }
 
-    final String basePath = "${downloadsDir?.path ?? ''}/Masstamilan";
+    Directory targetDir = Directory(basePath);
+    if (!await targetDir.exists()) await targetDir.create(recursive: true);
+
     bool hasErrors = false;
 
     for (int i = 0; i < _queries.length; i++) {
@@ -250,12 +271,7 @@ class _DownloaderScreenState extends State<DownloaderScreen> {
             
             try {
               String cleanTitle = songTitle.replaceAll(RegExp(r'[^a-zA-Z0-9\s\-_]'), '').trim();
-              String cleanMovie = targetMovie.replaceAll(RegExp(r'[^a-zA-Z0-9\s\-_]'), '').trim();
-              
-              Directory movieDir = Directory("$basePath/$cleanMovie");
-              if (!await movieDir.exists()) await movieDir.create(recursive: true);
-              
-              String savePath = "${movieDir.path}/$cleanTitle.mp3";
+              String savePath = "${targetDir.path}/$cleanTitle.mp3";
               
               if (!File(savePath).existsSync()) {
                 await dio.download(songLink, savePath);
@@ -323,7 +339,29 @@ class _DownloaderScreenState extends State<DownloaderScreen> {
               ),
             ),
             
-            const SizedBox(height: 24),
+            const SizedBox(height: 12),
+            
+            // Folder Selection Area
+            Card(
+              elevation: 2,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              child: ListTile(
+                leading: const Icon(Icons.folder, color: Colors.amber),
+                title: Text(_saveDirectory != null ? 'Save Folder Selected' : 'Default Save Folder'),
+                subtitle: Text(
+                  _saveDirectory ?? 'Downloads/Masstamilan',
+                  style: const TextStyle(fontSize: 12),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                trailing: TextButton(
+                  onPressed: _isProcessing ? null : _pickDirectory,
+                  child: const Text('Change'),
+                ),
+              ),
+            ),
+            
+            const SizedBox(height: 12),
             
             Row(
               children: [
